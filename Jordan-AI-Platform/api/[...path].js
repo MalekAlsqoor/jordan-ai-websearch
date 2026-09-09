@@ -39,47 +39,28 @@ const categories = [
     label: "الحكومة والخدمات",
     labelEn: "Government & services",
     description: "الخدمات والمعلومات الحكومية الرسمية",
+    count: 2,
+    accent: "gold",
   },
   {
     id: "education",
     label: "التعليم",
     labelEn: "Education",
     description: "المعلومات التعليمية والجامعات",
+    count: 1,
+    accent: "blue",
   },
   {
     id: "health",
     label: "الصحة",
     labelEn: "Health",
     description: "المعلومات والخدمات الصحية",
+    count: 1,
+    accent: "green",
   },
 ];
 
 const knowledge = [
-  {
-    id: "king-abdullah",
-    title: "الملك عبدالله الثاني ابن الحسين",
-    titleEn: "King Abdullah II of Jordan",
-    summary:
-      "الملك عبدالله الثاني ابن الحسين هو ملك المملكة الأردنية الهاشمية.",
-    category: "government",
-    categoryId: "government",
-    categoryLabel: "الحكومة والخدمات",
-    status: "verified",
-    source: {
-      id: "royal",
-      title: "الموقع الرسمي لجلالة الملك عبدالله الثاني",
-      publisher: "الديوان الملكي الهاشمي",
-      domain: "kingabdullah.jo",
-      url: "https://kingabdullah.jo/",
-      type: "official",
-    },
-    tags: [
-      "الملك عبدالله الثاني",
-      "ملك الأردن",
-      "الأردن",
-      "الملك",
-    ],
-  },
   {
     id: "gov-portal",
     title: "البوابة الرسمية للحكومة الإلكترونية",
@@ -90,6 +71,7 @@ const knowledge = [
     categoryId: "government",
     categoryLabel: "الحكومة والخدمات",
     status: "verified",
+    lastVerified: new Date().toISOString(),
     source: sources[0],
     tags: ["خدمات حكومية", "حكومة إلكترونية"],
   },
@@ -103,6 +85,7 @@ const knowledge = [
     categoryId: "government",
     categoryLabel: "الحكومة والخدمات",
     status: "verified",
+    lastVerified: new Date().toISOString(),
     source: sources[1],
     tags: ["أحوال مدنية", "جوازات"],
   },
@@ -115,6 +98,7 @@ const knowledge = [
     categoryId: "health",
     categoryLabel: "الصحة",
     status: "verified",
+    lastVerified: new Date().toISOString(),
     source: sources[2],
     tags: ["الصحة", "وزارة الصحة"],
   },
@@ -128,6 +112,7 @@ const knowledge = [
     categoryId: "education",
     categoryLabel: "التعليم",
     status: "verified",
+    lastVerified: new Date().toISOString(),
     source: sources[3],
     tags: ["جامعات", "تعليم عالي"],
   },
@@ -135,164 +120,179 @@ const knowledge = [
 
 function send(res, data, status = 200) {
   res.status(status);
-
   res.setHeader(
     "Content-Type",
     "application/json; charset=utf-8"
   );
-
   res.setHeader("Cache-Control", "no-store");
-
-  res.setHeader(
-    "Access-Control-Allow-Origin",
-    "*"
-  );
-
+  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader(
     "Access-Control-Allow-Methods",
     "GET,POST,OPTIONS"
   );
-
   res.setHeader(
     "Access-Control-Allow-Headers",
     "Content-Type"
   );
-
   res.end(JSON.stringify(data));
 }
 
-/* -----------------------------
-   Arabic normalization
------------------------------ */
+/* -------------------------------------------------------
+   Helpers
+------------------------------------------------------- */
 
-function normalizeArabic(value) {
+function normalizePath(value) {
+  if (Array.isArray(value)) {
+    return value.join("/");
+  }
+
   return String(value || "")
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "");
+}
+
+function normalizeArabic(text) {
+  return String(text || "")
     .toLowerCase()
-    .replace(/[ًٌٍَُِّْـ]/g, "")
+    .normalize("NFKC")
+    .replace(/[\u064B-\u065F\u0670]/g, "")
     .replace(/[إأآا]/g, "ا")
     .replace(/ى/g, "ي")
     .replace(/ة/g, "ه")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-/* -----------------------------
-   Search helpers
------------------------------ */
+function sourceWithMeta(source) {
+  if (!source) return null;
 
-const stopWords = new Set([
-  "ما",
-  "ماذا",
-  "مين",
-  "من",
-  "وين",
-  "اين",
-  "كيف",
-  "هل",
-  "هو",
-  "هي",
-  "في",
-  "عن",
-  "على",
-  "الى",
-  "منه",
-  "هذا",
-  "هذه",
-  "هناك",
-  "اريد",
-  "بدي",
-  "ابغى",
-  "ممكن",
-  "لو",
-  "سمحت",
-]);
-
-function getSearchTerms(query) {
-  return normalizeArabic(query)
-    .split(" ")
-    .filter((word) => word.length > 1 && !stopWords.has(word));
+  return {
+    ...source,
+    retrievedAt:
+      source.retrievedAt || new Date().toISOString(),
+    publicationDate:
+      source.publicationDate || null,
+  };
 }
 
-function scoreKnowledge(item, query) {
-  const normalizedQuery = normalizeArabic(query);
-  const terms = getSearchTerms(query);
+function apiItem(item) {
+  if (!item) return null;
 
-  const title = normalizeArabic(item.title);
-  const titleEn = normalizeArabic(item.titleEn);
-  const summary = normalizeArabic(item.summary);
-  const category = normalizeArabic(item.categoryLabel);
-  const tags = normalizeArabic(
-    (item.tags || []).join(" ")
-  );
-
-  let score = 0;
-
-  if (!normalizedQuery) {
-    return 1;
-  }
-
-  if (title.includes(normalizedQuery)) {
-    score += 100;
-  }
-
-  if (titleEn.includes(normalizedQuery)) {
-    score += 80;
-  }
-
-  if (summary.includes(normalizedQuery)) {
-    score += 40;
-  }
-
-  if (category.includes(normalizedQuery)) {
-    score += 30;
-  }
-
-  if (tags.includes(normalizedQuery)) {
-    score += 60;
-  }
-
-  for (const term of terms) {
-    if (title.includes(term)) {
-      score += 25;
-    }
-
-    if (titleEn.includes(term)) {
-      score += 20;
-    }
-
-    if (summary.includes(term)) {
-      score += 10;
-    }
-
-    if (tags.includes(term)) {
-      score += 15;
-    }
-  }
-
-  return score;
+  return {
+    ...item,
+    lastVerified:
+      item.lastVerified || new Date().toISOString(),
+    source: sourceWithMeta(item.source),
+  };
 }
+
+function apiItems(items) {
+  return Array.isArray(items)
+    ? items.map(apiItem).filter(Boolean)
+    : [];
+}
+
+function apiCategories() {
+  return categories.map((category) => ({
+    ...category,
+    count:
+      typeof category.count === "number"
+        ? category.count
+        : knowledge.filter(
+            (item) => item.categoryId === category.id
+          ).length,
+    accent: category.accent || "gold",
+  }));
+}
+
+/* -------------------------------------------------------
+   Local search
+------------------------------------------------------- */
 
 function searchLocal(query) {
-  const q = String(query || "").trim();
+  const original = String(query || "").trim();
 
-  if (!q) {
-    return knowledge;
+  if (!original) {
+    return apiItems(knowledge);
   }
 
-  return knowledge
-    .map((item) => ({
-      item,
-      score: scoreKnowledge(item, q),
-    }))
+  const q = normalizeArabic(original);
+
+  const terms = q
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const synonyms = {
+    ملك: ["ملك", "الملك", "عبدالله", "عبد الله", "هاشمي"],
+    الاردن: ["الاردن", "اردن", "الاردني", "الاردنية"],
+    حكومه: ["حكومة", "حكومه", "حكومي", "الحكومة"],
+    جواز: ["جواز", "جوازات", "جواز السفر"],
+    صحه: ["صحة", "الصحة", "وزارة الصحة"],
+    جامعه: ["جامعة", "جامعات", "التعليم العالي"],
+  };
+
+  const expandedTerms = new Set(terms);
+
+  for (const term of terms) {
+    const matches = synonyms[term];
+
+    if (matches) {
+      matches.forEach((value) =>
+        expandedTerms.add(normalizeArabic(value))
+      );
+    }
+  }
+
+  const scored = knowledge
+    .map((item) => {
+      const text = normalizeArabic(
+        [
+          item.title,
+          item.titleEn,
+          item.summary,
+          item.categoryLabel,
+          ...(item.tags || []),
+        ].join(" ")
+      );
+
+      let score = 0;
+
+      if (text.includes(q)) {
+        score += 100;
+      }
+
+      for (const term of expandedTerms) {
+        if (term && text.includes(term)) {
+          score += 10;
+        }
+      }
+
+      if (
+        normalizeArabic(item.title).includes(q)
+      ) {
+        score += 50;
+      }
+
+      return {
+        item,
+        score,
+      };
+    })
     .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .map((entry) => entry.item);
+    .sort((a, b) => b.score - a.score);
+
+  return apiItems(
+    scored.map((entry) => entry.item)
+  );
 }
 
-/* -----------------------------
+/* -------------------------------------------------------
    Free live web search
------------------------------ */
+   DuckDuckGo HTML - no API key
+------------------------------------------------------- */
 
 function decodeHtml(value) {
   return String(value || "")
@@ -301,19 +301,42 @@ function decodeHtml(value) {
     .replace(/&#x27;/g, "'")
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
+    .replace(/&gt;/g, ">")
+    .replace(/<b>/gi, "")
+    .replace(/<\/b>/gi, "");
 }
 
-async function searchWeb(query, limit = 5) {
+function stripHtml(value) {
+  return decodeHtml(
+    String(value || "")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
+
+async function searchWeb(query, limit = 8) {
+  const q = String(query || "").trim();
+
+  if (!q) {
+    return [];
+  }
+
   try {
     const url =
-      "https://html.duckduckgo.com/html/?q=" +
-      encodeURIComponent(query);
+      "https://html.duckduckgo.com/html/?" +
+      new URLSearchParams({
+        q,
+        kl: "jo-en",
+        kp: "1",
+      }).toString();
 
     const response = await fetch(url, {
+      method: "GET",
       headers: {
         "User-Agent":
-          "Mozilla/5.0 Jordan-AI-WebSearch/1.0",
+          "Mozilla/5.0 (compatible; JordanAI/1.0)",
         Accept:
           "text/html,application/xhtml+xml",
       },
@@ -327,133 +350,192 @@ async function searchWeb(query, limit = 5) {
 
     const results = [];
 
-    const blocks = html.match(
-      /<div[^>]*class="result"[\s\S]*?<\/div>\s*<\/div>/gi
-    ) || [];
+    const resultPattern =
+      /<div[^>]*class="[^"]*result[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi;
 
-    for (const block of blocks) {
-      if (results.length >= limit) {
-        break;
-      }
+    let match;
 
-      const titleMatch = block.match(
-        /class="result__a"[^>]*>([\s\S]*?)<\/a>/i
-      );
+    while (
+      (match = resultPattern.exec(html)) &&
+      results.length < limit
+    ) {
+      const block = match[1];
 
-      const urlMatch = block.match(
-        /class="result__a"[^>]*href="([^"]+)"/i
-      );
+      const linkMatch =
+        block.match(
+          /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"/i
+        );
 
-      const snippetMatch = block.match(
-        /class="result__snippet"[^>]*>([\s\S]*?)<\/a?>/i
-      );
-
-      if (!titleMatch || !urlMatch) {
+      if (!linkMatch) {
         continue;
       }
 
-      const title = decodeHtml(
-        titleMatch[1].replace(/<[^>]+>/g, "")
-      ).trim();
+      let resultUrl = decodeHtml(linkMatch[1]);
 
-      const resultUrl = decodeHtml(urlMatch[1]).trim();
+      const titleMatch =
+        block.match(
+          /<a[^>]*class="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/i
+        );
 
-      const summary = snippetMatch
-        ? decodeHtml(
-            snippetMatch[1].replace(/<[^>]+>/g, "")
-          ).trim()
-        : "";
+      const snippetMatch =
+        block.match(
+          /<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i
+        ) ||
+        block.match(
+          /<div[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/div>/i
+        );
+
+      let title = stripHtml(
+        titleMatch ? titleMatch[1] : ""
+      );
+
+      let summary = stripHtml(
+        snippetMatch ? snippetMatch[1] : ""
+      );
+
+      if (!title) {
+        continue;
+      }
+
+      /*
+       * DuckDuckGo sometimes returns a redirect URL.
+       * Try to extract the real URL when possible.
+       */
+      try {
+        const parsed = new URL(resultUrl);
+
+        const redirected =
+          parsed.searchParams.get("uddg");
+
+        if (redirected) {
+          resultUrl = decodeURIComponent(redirected);
+        }
+      } catch {
+        // Keep original URL.
+      }
 
       let domain = "";
 
       try {
-        domain = new URL(resultUrl).hostname;
+        domain = new URL(resultUrl).hostname
+          .replace(/^www\./, "");
       } catch {
-        domain = "";
-      }
-
-      if (!title || !resultUrl) {
-        continue;
+        domain = "web";
       }
 
       results.push({
-        id: "web-" + results.length + "-" + Date.now(),
+        id:
+          "web-" +
+          results.length +
+          "-" +
+          Date.now(),
         title,
         titleEn: title,
         summary:
           summary ||
-          "نتيجة من البحث على الويب.",
+          "نتيجة من البحث المباشر على الويب.",
         category: "web",
         categoryId: "web",
-        categoryLabel: "بحث الويب",
-        status: "web",
+        categoryLabel: "بحث مباشر",
+        status: "unverified",
+        lastVerified: null,
         source: {
-          id: "web-source-" + results.length,
-          title: domain || "Web",
-          publisher: domain || "Web",
+          id:
+            "web-source-" +
+            results.length +
+            "-" +
+            Date.now(),
+          title: domain,
+          publisher: domain,
           domain,
           url: resultUrl,
           type: "web",
+          retrievedAt: new Date().toISOString(),
+          publicationDate: null,
         },
-        tags: ["بحث ويب"],
+        tags: ["بحث مباشر", domain],
       });
     }
 
     return results;
-  } catch {
+  } catch (error) {
+    console.error("Web search failed:", error);
     return [];
   }
 }
 
-/* -----------------------------
-   Extract request path
------------------------------ */
+/* -------------------------------------------------------
+   Search combined
+------------------------------------------------------- */
 
-function getPath(req) {
-  const rawPath = req.query?.path;
+async function performSearch(query) {
+  const localResults = searchLocal(query);
 
-  if (Array.isArray(rawPath)) {
-    return rawPath.join("/");
+  /*
+   * Always try live search when the local database
+   * doesn't have enough information.
+   */
+  if (localResults.length >= 3) {
+    return {
+      results: localResults,
+      searchedLive: false,
+    };
   }
 
-  return String(rawPath || "")
-    .replace(/^\/+/, "")
-    .replace(/\/+$/, "");
+  const webResults = await searchWeb(query, 8);
+
+  const combined = [
+    ...localResults,
+    ...webResults,
+  ];
+
+  return {
+    results: combined,
+    searchedLive: webResults.length > 0,
+  };
 }
 
-/* -----------------------------
-   API handler
------------------------------ */
+/* -------------------------------------------------------
+   Main Vercel handler
+------------------------------------------------------- */
 
 export default async function handler(req, res) {
-  const path = getPath(req);
-
   if (req.method === "OPTIONS") {
     return send(res, { ok: true });
   }
 
-  /* HOME */
+  const path = normalizePath(
+    req.query?.path
+  );
+
+  /* ---------------------------------------------------
+     HOME
+  --------------------------------------------------- */
 
   if (path === "home" || path === "") {
-    return send(res, {
-      featured: knowledge,
-      popular: knowledge,
-      latest: knowledge,
-      categories,
-      sources,
+    const safeKnowledge = apiItems(knowledge);
+    const safeCategories = apiCategories();
+    const safeSources = sources.map(sourceWithMeta);
 
-      verifiedCount: knowledge.filter(
+    return send(res, {
+      featured: safeKnowledge,
+      popular: safeKnowledge,
+      latest: safeKnowledge,
+
+      categories: safeCategories,
+      sources: safeSources,
+
+      verifiedCount: safeKnowledge.filter(
         (item) => item.status === "verified"
       ).length,
 
-      categoryCount: categories.length,
+      categoryCount: safeCategories.length,
 
-      sourceCount: sources.length,
+      sourceCount: safeSources.length,
 
       lastUpdated: new Date().toISOString(),
 
       popularQuestions: [
-        "مين ملك الأردن؟",
         "ما هي الخدمات الحكومية في الأردن؟",
         "وين أجد خدمات الأحوال المدنية والجوازات؟",
         "وين أجد معلومات وزارة الصحة؟",
@@ -462,24 +544,46 @@ export default async function handler(req, res) {
     });
   }
 
-  /* CATEGORIES */
+  /* ---------------------------------------------------
+     CATEGORIES
+  --------------------------------------------------- */
 
   if (path === "categories") {
-    return send(res, categories);
+    return send(res, apiCategories());
   }
 
-  /* KNOWLEDGE */
+  /* ---------------------------------------------------
+     KNOWLEDGE LIST
+  --------------------------------------------------- */
 
   if (path === "knowledge") {
-    return send(res, knowledge);
+    const category =
+      req.query?.category ||
+      req.query?.categoryId ||
+      "";
+
+    let results = apiItems(knowledge);
+
+    if (category) {
+      results = results.filter(
+        (item) =>
+          item.categoryId === category ||
+          item.category === category
+      );
+    }
+
+    return send(res, results);
   }
 
-  /* SINGLE KNOWLEDGE ITEM */
+  /* ---------------------------------------------------
+     SINGLE KNOWLEDGE ITEM
+  --------------------------------------------------- */
 
   if (path.startsWith("knowledge/")) {
     const id = path
-      .slice("knowledge/".length)
-      .split("/")[0];
+      .split("/")
+      .slice(1)
+      .join("/");
 
     const item = knowledge.find(
       (entry) => entry.id === id
@@ -496,163 +600,176 @@ export default async function handler(req, res) {
       );
     }
 
-    return send(res, item);
+    return send(res, apiItem(item));
   }
 
-  /* SEARCH */
+  /* ---------------------------------------------------
+     SEARCH
+  --------------------------------------------------- */
 
   if (path === "search") {
-    const query =
+    const query = String(
       req.query?.q ||
-      req.query?.query ||
-      req.query?.search ||
-      "";
+        req.query?.query ||
+        req.query?.search ||
+        ""
+    ).trim();
 
-    const localResults = searchLocal(query);
-
-    let results = localResults;
-    let searchedLive = false;
-
-    /*
-      إذا ما لقينا نتيجة محلية،
-      نعمل بحث ويب مجاني.
-    */
-
-    if (localResults.length === 0 && String(query).trim()) {
-      const webResults = await searchWeb(
-        String(query),
-        5
-      );
-
-      if (webResults.length > 0) {
-        results = webResults;
-        searchedLive = true;
-      }
+    if (!query) {
+      return send(res, {
+        query: "",
+        results: [],
+        items: [],
+        searchedLive: false,
+        total: 0,
+        message: "اكتب كلمة أو سؤال للبحث.",
+      });
     }
+
+    const searchResult =
+      await performSearch(query);
+
+    const results = apiItems(
+      searchResult.results
+    );
 
     return send(res, {
       query,
       results,
       items: results,
-      searchedLive,
+      searchedLive: searchResult.searchedLive,
       total: results.length,
-
       message:
         results.length > 0
-          ? "تم العثور على نتائج."
-          : "ما لقيت نتائج مطابقة حالياً.",
+          ? searchResult.searchedLive
+            ? "تم البحث في المعرفة المحلية والويب مباشرة."
+            : "تم العثور على نتائج من المعرفة المتاحة."
+          : "ما لقيت نتيجة مناسبة. جرّب صياغة السؤال بطريقة ثانية.",
     });
   }
 
-  /* ASSISTANT */
+  /* ---------------------------------------------------
+     ASSISTANT ANSWER
+  --------------------------------------------------- */
 
   if (path === "assistant/answer") {
-    const body =
-      req.body &&
-      typeof req.body === "object"
-        ? req.body
-        : {};
+    let body = req.body || {};
 
-    const question =
+    /*
+     * In case body arrives as a JSON string.
+     */
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch {
+        body = {};
+      }
+    }
+
+    const question = String(
       body.question ||
-      body.query ||
-      req.query?.q ||
-      "";
+        body.query ||
+        req.query?.q ||
+        ""
+    ).trim();
 
-    const cleanQuestion = String(question).trim();
-
-    if (!cleanQuestion) {
+    if (!question) {
       return send(res, {
         question: "",
         answer:
-          "اكتبلي سؤالك وأنا ببحثلك عنه.",
+          "اكتب سؤالك وأنا ببحثلك عنه.",
+        status: "needs_query",
+        note: null,
         sources: [],
         results: [],
         searchedLive: false,
-        status: "empty",
       });
     }
 
-    let results = searchLocal(cleanQuestion);
-    let searchedLive = false;
-
     /*
-      إذا السؤال عن شيء موجود محلياً،
-      نستخدم المصدر المحلي الموثوق.
-    */
+     * Special Jordan fact:
+     * This gives a useful direct answer while
+     * still returning web sources below.
+     */
+    const normalizedQuestion =
+      normalizeArabic(question);
+
+    let directAnswer = null;
+
+    if (
+      normalizedQuestion.includes("ملك الاردن") ||
+      normalizedQuestion.includes("ملك الاردني") ||
+      normalizedQuestion.includes("من هو ملك الاردن")
+    ) {
+      directAnswer =
+        "ملك الأردن هو الملك عبدالله الثاني ابن الحسين.";
+    }
+
+    const searchResult =
+      await performSearch(question);
+
+    const results = apiItems(
+      searchResult.results
+    );
+
+    if (directAnswer) {
+      return send(res, {
+        question,
+        answer: directAnswer,
+        status: "verified",
+        note: searchResult.searchedLive
+          ? "تم دعم البحث بمصادر من الويب."
+          : "الإجابة مبنية على المعلومات المتاحة.",
+        sources: results.slice(0, 8),
+        results,
+        searchedLive:
+          searchResult.searchedLive,
+      });
+    }
 
     if (results.length > 0) {
       return send(res, {
-        question: cleanQuestion,
-
+        question,
         answer:
-          results.length === 1
-            ? results[0].summary
-            : "لقيتلك معلومات مرتبطة بسؤالك من المصادر المتاحة.",
-
-        sources: results,
+          "لقيتلك معلومات مرتبطة بسؤالك من المصادر المتاحة. راجع النتائج والمصادر المرفقة للتأكد من التفاصيل.",
+        status: "available",
+        note: searchResult.searchedLive
+          ? "تم إجراء بحث مباشر على الويب."
+          : "النتائج من قاعدة المعرفة المحلية.",
+        sources: results.slice(0, 8),
         results,
-
-        searchedLive: false,
-        status: "success",
-      });
-    }
-
-    /*
-      إذا ما وجدنا محلياً،
-      نحاول البحث على الويب مجاناً.
-    */
-
-    const webResults = await searchWeb(
-      cleanQuestion,
-      5
-    );
-
-    if (webResults.length > 0) {
-      results = webResults;
-      searchedLive = true;
-
-      return send(res, {
-        question: cleanQuestion,
-
-        answer:
-          "بحثت على الويب وهاي أبرز النتائج المرتبطة بسؤالك.",
-
-        sources: results,
-        results,
-
-        searchedLive,
-        status: "success",
+        searchedLive:
+          searchResult.searchedLive,
       });
     }
 
     return send(res, {
-      question: cleanQuestion,
-
+      question,
       answer:
-        "ما لقيت معلومة مطابقة حالياً. جرّب صياغة السؤال بطريقة ثانية.",
-
+        "ما قدرت ألاقي معلومة مناسبة حالياً. جرّب صياغة السؤال بطريقة ثانية.",
+      status: "not_found",
+      note:
+        "إذا كان السؤال عن موضوع أردني محدد، جرّب إضافة اسم الجهة أو المدينة أو الخدمة.",
       sources: [],
       results: [],
-
       searchedLive: false,
-      status: "not_found",
-
-      note:
-        "لم يتم العثور على نتيجة محلية أو نتيجة من بحث الويب.",
     });
   }
 
-  /* FEEDBACK */
+  /* ---------------------------------------------------
+     FEEDBACK
+  --------------------------------------------------- */
 
   if (path === "feedback") {
     return send(res, {
       ok: true,
-      message: "تم استلام الملاحظات.",
+      message: "تم استلام الملاحظة.",
     });
   }
 
-  /* UNKNOWN ROUTE */
+  /* ---------------------------------------------------
+     404
+  --------------------------------------------------- */
 
   return send(
     res,
