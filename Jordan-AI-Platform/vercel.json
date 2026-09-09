@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm --filter @workspace/jordan-ai build",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "outputDirectory": "artifacts/jordan-ai/dist/public",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
