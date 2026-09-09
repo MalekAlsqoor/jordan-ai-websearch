@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Jordan AI — الأردن AI"
+description = "An Arabic-first Jordan knowledge platform for asking, learning, discovering, and searching Jordan-related information with source-aware answers, categories, and a modular backend ready for verified knowledge and live search."
+version = "1.0.0"
+id = "artifacts/jordan-ai"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19753
+
+[services.development]
+run = "pnpm --filter @workspace/jordan-ai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/jordan-ai", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/jordan-ai/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19753"
+BASE_PATH = "/"

@@ -1,0 +1,371 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API for the Jordan AI knowledge platform
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: discovery
+    description: Public discovery and search
+  - name: assistant
+    description: Source-aware AI assistant
+  - name: feedback
+    description: User feedback
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /home:
+    get:
+      operationId: getHome
+      tags: [discovery]
+      summary: Get the Jordan AI home summary
+      responses:
+        "200":
+          description: Homepage summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeSummary"
+  /categories:
+    get:
+      operationId: listCategories
+      tags: [discovery]
+      summary: List Jordan knowledge categories
+      responses:
+        "200":
+          description: Categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+  /search:
+    get:
+      operationId: searchJordan
+      tags: [discovery]
+      summary: Search source-aware Jordan knowledge
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: language
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ar, en]
+            default: ar
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 8
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "400":
+          description: Missing search query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /knowledge:
+    get:
+      operationId: listKnowledge
+      tags: [discovery]
+      summary: List verified and reviewable knowledge records
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 12
+      responses:
+        "200":
+          description: Knowledge records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KnowledgeItem"
+  /knowledge/{id}:
+    get:
+      operationId: getKnowledge
+      tags: [discovery]
+      summary: Get one knowledge record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Knowledge record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeItem"
+        "404":
+          description: Knowledge record not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /assistant/answer:
+    post:
+      operationId: answerQuestion
+      tags: [assistant]
+      summary: Answer a Jordan-related question with source context
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswerQuestionInput"
+      responses:
+        "200":
+          description: Source-aware answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantAnswer"
+        "400":
+          description: Invalid question
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /feedback:
+    post:
+      operationId: createFeedback
+      tags: [feedback]
+      summary: Report a search or answer issue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackInput"
+      responses:
+        "201":
+          description: Feedback accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feedback"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        labelEn:
+          type: string
+        description:
+          type: string
+        count:
+          type: integer
+        accent:
+          type: string
+      required: [id, label, labelEn, description, count, accent]
+    Source:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        publisher:
+          type: string
+        domain:
+          type: string
+        url:
+          type: string
+        type:
+          type: string
+          enum: [official, authoritative, reliable, secondary]
+        retrievedAt:
+          type: string
+        publicationDate:
+          type: ["string", "null"]
+      required: [id, title, publisher, domain, url, type, retrievedAt, publicationDate]
+    KnowledgeItem:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        titleEn:
+          type: string
+        summary:
+          type: string
+        category:
+          type: string
+        categoryLabel:
+          type: string
+        status:
+          type: string
+          enum: [verified, review]
+        lastVerified:
+          type: ["string", "null"]
+        source:
+          $ref: "#/components/schemas/Source"
+        tags:
+          type: array
+          items:
+            type: string
+      required: [id, title, titleEn, summary, category, categoryLabel, status, lastVerified, source, tags]
+    SearchResponse:
+      type: object
+      properties:
+        query:
+          type: string
+        searchedLive:
+          type: boolean
+        message:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeItem"
+      required: [query, searchedLive, message, results]
+    HomeSummary:
+      type: object
+      properties:
+        verifiedCount:
+          type: integer
+        categoryCount:
+          type: integer
+        sourceCount:
+          type: integer
+        lastUpdated:
+          type: string
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/Category"
+        featured:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeItem"
+        popularQuestions:
+          type: array
+          items:
+            type: string
+      required: [verifiedCount, categoryCount, sourceCount, lastUpdated, categories, featured, popularQuestions]
+    AnswerQuestionInput:
+      type: object
+      properties:
+        question:
+          type: string
+          minLength: 2
+          maxLength: 1000
+        language:
+          type: string
+          enum: [ar, en]
+          default: ar
+      required: [question]
+    AssistantAnswer:
+      type: object
+      properties:
+        question:
+          type: string
+        answer:
+          type: string
+        status:
+          type: string
+          enum: [verified, needs-current-source, not-verified]
+        searchedLive:
+          type: boolean
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/Source"
+        note:
+          type: string
+      required: [question, answer, status, searchedLive, sources, note]
+    FeedbackInput:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [incorrect, outdated, missing, bad-source, answer-problem]
+        message:
+          type: string
+          minLength: 3
+          maxLength: 2000
+        question:
+          type: ["string", "null"]
+        knowledgeId:
+          type: ["string", "null"]
+      required: [kind, message]
+    Feedback:
+      type: object
+      properties:
+        id:
+          type: string
+        received:
+          type: boolean
+        message:
+          type: string
+      required: [id, received, message]
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
