@@ -1,80 +1,68 @@
-const SEARCH_ENGINES = [
-  "https://search.bus-hit.me",
-  "https://searx.be",
-  "https://search.sapti.me",
+const SEARX_INSTANCES = [
+  "https://searx.tiekoetter.com",
+  "https://search.yuri.llc",
+  "https://search.catboy.house",
+  "https://search.mectov.my.id",
+  "https://search.lumy.live",
+  "https://search.bladerunn.in",
+  "https://search.ethibox.fr",
+  "https://search.im-in.space",
+  "https://search.indst.eu",
+  "https://search.inetol.net",
+  "https://search.serpensin.com",
+  "https://search.zina.dev",
+  "https://search.2b9t.xyz",
+  "https://search.anoni.net"
 ];
 
-function normalizeArabic(text) {
+function cleanText(text) {
   return String(text || "")
-    .toLowerCase()
-    .normalize("NFKC")
-    .replace(/[\u064B-\u065F\u0670]/g, "")
-    .replace(/[إأآا]/g, "ا")
-    .replace(/ى/g, "ي")
-    .replace(/ة/g, "ه")
-    .replace(/ؤ/g, "و")
-    .replace(/ئ/g, "ي")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/<[^>]*>/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function getDomain(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-
-function sourceType(domain) {
-  if (
-    domain.endsWith(".gov.jo") ||
-    domain === "rhc.jo" ||
-    domain.endsWith(".edu.jo")
-  ) {
-    return "official";
-  }
-
-  return "reliable";
+function send(res, data, status = 200) {
+  res.status(status).json(data);
 }
 
 async function searchSearXNG(question) {
-  for (const base of SEARCH_ENGINES) {
+  for (const instance of SEARX_INSTANCES) {
     try {
       const url =
-        `${base}/search?q=${encodeURIComponent(question)}` +
-        `&format=json&language=ar&categories=general`;
+        `${instance}/search?` +
+        `q=${encodeURIComponent(question)}` +
+        `&format=json` +
+        `&language=ar` +
+        `&categories=general`;
 
       const response = await fetch(url, {
         headers: {
           Accept: "application/json",
-          "User-Agent": "Jordan-AI/1.0",
+          "User-Agent": "Jordan-AI/1.0"
         },
-        signal: AbortSignal.timeout(7000),
+        signal: AbortSignal.timeout(6000)
       });
 
       if (!response.ok) continue;
 
       const data = await response.json();
 
-      if (!Array.isArray(data.results)) continue;
+      if (!Array.isArray(data.results) || !data.results.length) {
+        continue;
+      }
 
-      const results = data.results
-        .filter((item) => item && item.url && item.title)
+      return data.results
+        .filter((item) => item.url && (item.title || item.content))
         .slice(0, 8)
         .map((item) => ({
-          title: String(item.title || "").replace(/<[^>]*>/g, ""),
-          url: String(item.url),
-          content: String(item.content || ""),
-          domain: getDomain(item.url),
+          title: cleanText(item.title),
+          url: item.url,
+          snippet: cleanText(item.content || item.title),
+          engine: item.engine || "SearXNG"
         }));
-
-      if (results.length > 0) {
-        return results;
-      }
     } catch {
-      // جرّب محرك SearXNG التالي
+      continue;
     }
   }
 
@@ -84,53 +72,43 @@ async function searchSearXNG(question) {
 async function searchDuckDuckGo(question) {
   try {
     const url =
-      `https://api.duckduckgo.com/?q=${encodeURIComponent(question)}` +
-      `&format=json&no_html=1&skip_disambig=1`;
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(question)}`;
 
     const response = await fetch(url, {
       headers: {
-        Accept: "application/json",
-        "User-Agent": "Jordan-AI/1.0",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
       },
-      signal: AbortSignal.timeout(7000),
+      signal: AbortSignal.timeout(7000)
     });
 
     if (!response.ok) return [];
 
-    const data = await response.json();
+    const html = await response.text();
+
     const results = [];
 
-    if (data.AbstractURL && data.AbstractText) {
+    const regex =
+      /result__a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?result__snippet[^>]*>([\s\S]*?)<\/a>/gi;
+
+    let match;
+
+    while ((match = regex.exec(html)) && results.length < 8) {
+      const url = match[1];
+      const title = cleanText(match[2]);
+      const snippet = cleanText(match[3]);
+
+      if (!url || !title) continue;
+
       results.push({
-        title: data.Heading || "DuckDuckGo",
-        url: data.AbstractURL,
-        content: data.AbstractText,
-        domain: getDomain(data.AbstractURL),
+        title,
+        url,
+        snippet,
+        engine: "DuckDuckGo"
       });
     }
 
-    function collect(items) {
-      if (!Array.isArray(items)) return;
-
-      for (const item of items) {
-        if (item.FirstURL && item.Text) {
-          results.push({
-            title: item.Text,
-            url: item.FirstURL,
-            content: item.Text,
-            domain: getDomain(item.FirstURL),
-          });
-        }
-
-        if (Array.isArray(item.Topics)) {
-          collect(item.Topics);
-        }
-      }
-    }
-
-    collect(data.RelatedTopics);
-
-    return results.slice(0, 8);
+    return results;
   } catch {
     return [];
   }
@@ -141,111 +119,89 @@ function buildAnswer(question, results) {
     return {
       answer:
         "لم أتمكن من الوصول إلى نتائج بحث حاليًا. جرّب السؤال مرة أخرى بعد قليل.",
-      status: "needs-current-source",
+      status: "needs-current-source"
     };
   }
 
   const useful = results.slice(0, 5);
 
-  const lines = useful.map((item) => {
-    const text = item.content
-      .replace(/\s+/g, " ")
-      .trim();
-
-    return text
-      ? `${item.title}: ${text}`
-      : item.title;
-  });
+  const answer =
+    `بحثت لك على الويب عن: «${question}»\n\n` +
+    useful
+      .map((item, index) => {
+        return `${index + 1}. ${item.title}\n${item.snippet}`;
+      })
+      .join("\n\n");
 
   return {
-    answer:
-      `بحثت لك في الويب عن «${question}».\n\n` +
-      lines.join("\n\n"),
-    status: "verified",
+    answer,
+    status: "verified"
   };
 }
 
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  res.setHeader("Cache-Control", "no-store");
-  res.setHeader(
-    "Content-Type",
-    "application/json; charset=utf-8"
-  );
-
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
+  if (req.method !== "POST" && req.method !== "GET") {
+    return send(res, {
+      error: "Method not allowed"
+    }, 405);
   }
 
-  if (req.method !== "POST") {
-    return res.status(405).json({
-      error: "Method not allowed",
-    });
+  let question = "";
+
+  if (req.method === "POST") {
+    try {
+      if (req.body && typeof req.body === "object") {
+        question = req.body.question || req.body.query || "";
+      } else if (typeof req.body === "string") {
+        const parsed = JSON.parse(req.body);
+        question = parsed.question || parsed.query || "";
+      }
+    } catch {}
   }
-
-  const body =
-    typeof req.body === "object" && req.body !== null
-      ? req.body
-      : {};
-
-  const question = String(
-    body.question || body.query || ""
-  ).trim();
 
   if (!question) {
-    return res.status(400).json({
-      error: "السؤال مطلوب",
-    });
+    question = req.query?.q || req.query?.question || "";
   }
 
-  const normalized = normalizeArabic(question);
+  question = String(question).trim();
 
-  // بحث عام حقيقي
+  if (!question) {
+    return send(res, {
+      question: "",
+      answer: "اكتب سؤالك أولًا.",
+      status: "not-verified",
+      searchedLive: false,
+      sources: []
+    }, 400);
+  }
+
+  // البحث الحقيقي
   let results = await searchSearXNG(question);
 
-  // إذا SearXNG ما اشتغل، جرّب DuckDuckGo
+  // احتياط إذا كل SearXNG فشل
   if (!results.length) {
     results = await searchDuckDuckGo(question);
   }
 
-  // ترتيب المصادر الرسمية والأردنية أولًا
-  results.sort((a, b) => {
-    const aOfficial =
-      a.domain.endsWith(".gov.jo") ||
-      a.domain === "rhc.jo";
-
-    const bOfficial =
-      b.domain.endsWith(".gov.jo") ||
-      b.domain === "rhc.jo";
-
-    return Number(bOfficial) - Number(aOfficial);
-  });
-
   const result = buildAnswer(question, results);
 
-  const sources = results.map((item, index) => ({
-    id: `web-${index + 1}`,
+  const sources = results.slice(0, 8).map((item) => ({
     title: item.title,
-    publisher: item.domain,
-    domain: item.domain,
     url: item.url,
-    type: sourceType(item.domain),
+    snippet: item.snippet,
+    type: "reliable",
     retrievedAt: new Date().toISOString(),
-    publicationDate: null,
+    publicationDate: null
   }));
 
-  return res.status(200).json({
+  return send(res, {
     question,
     answer: result.answer,
     status: result.status,
     searchedLive: true,
     sources,
-    note:
-      normalized.includes("الاردن") ||
-      normalized.includes("اردن")
-        ? "تم إعطاء أولوية للمصادر الأردنية الرسمية عندما ظهرت في نتائج البحث."
-        : "تم البحث في الويب وعرض المصادر المستخدمة.",
+    note: results.length
+      ? "تم البحث مباشرة على الويب وعرض المصادر المستخدمة."
+      : "تعذر الوصول إلى محركات البحث حاليًا."
   });
 }
