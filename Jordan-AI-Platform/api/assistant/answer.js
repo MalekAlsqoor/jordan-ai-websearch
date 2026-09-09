@@ -297,7 +297,7 @@ ${sourcesText}
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "google/gemma-2-2b-it:cheapest",
+        model: "openai/gpt-oss-20b:cheapest",
         messages: [
           {
             role: "system",
