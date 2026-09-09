@@ -22,6 +22,7 @@ const knowledge = [
   { id: "king-jordan", title: "الملك عبدالله الثاني", titleEn: "King Abdullah II", summary: "الملك عبدالله الثاني ابن الحسين هو ملك المملكة الأردنية الهاشمية.", category: "government", categoryLabel: "الحكومة والخدمات", status: "verified", lastVerified: now(), source: sources[4], tags: ["ملك الأردن", "الملك عبدالله الثاني", "الأردن"] },
 ];
 
+
 function sourceWithMeta(source) {
   if (!source) return null;
   return { ...source, retrievedAt: source.retrievedAt || now(), publicationDate: source.publicationDate ?? null };
