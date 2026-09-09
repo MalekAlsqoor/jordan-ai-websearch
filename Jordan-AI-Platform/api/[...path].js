@@ -1,5 +1,9 @@
 const now = () => new Date().toISOString();
 
+/* =========================
+   OFFICIAL SOURCES
+========================= */
+
 const sources = [
   {
     id: "gov",
@@ -43,6 +47,10 @@ const sources = [
   },
 ];
 
+/* =========================
+   CATEGORIES
+========================= */
+
 const categories = [
   {
     id: "government",
@@ -69,6 +77,10 @@ const categories = [
     accent: "green",
   },
 ];
+
+/* =========================
+   LOCAL KNOWLEDGE
+========================= */
 
 const knowledge = [
   {
@@ -134,6 +146,10 @@ const knowledge = [
   },
 ];
 
+/* =========================
+   HELPERS
+========================= */
+
 function sourceWithMeta(source) {
   if (!source) return null;
 
@@ -161,20 +177,58 @@ function itemWithMeta(item) {
 
 function send(res, data, status = 200) {
   res.status(status);
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
+
+  res.setHeader(
+    "Content-Type",
+    "application/json; charset=utf-8"
+  );
+
   res.setHeader("Cache-Control", "no-store");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  res.setHeader(
+    "Access-Control-Allow-Origin",
+    "*"
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,POST,OPTIONS"
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type"
+  );
 
   return res.end(JSON.stringify(data));
 }
 
 function pathOf(value) {
-  return Array.isArray(value)
-    ? value.join("/")
-    : String(value || "").replace(/^\/+|\/+$/g, "");
+  if (Array.isArray(value)) {
+    return value.join("/");
+  }
+
+  return String(value || "")
+    .replace(/^\/+|\/+$/g, "");
 }
+
+function bodyOf(req) {
+  if (!req.body) return {};
+
+  if (typeof req.body === "object") {
+    return req.body;
+  }
+
+  try {
+    return JSON.parse(req.body);
+  } catch {
+    return {};
+  }
+}
+
+/* =========================
+   ARABIC NORMALIZATION
+========================= */
 
 function normalizeArabic(text) {
   return String(text || "")
@@ -191,13 +245,52 @@ function normalizeArabic(text) {
     .trim();
 }
 
+/* =========================
+   LOCAL SEARCH
+========================= */
+
 const aliases = {
-  ملك: ["الملك", "ملك الأردن", "عبدالله الثاني", "عبد الله الثاني", "هاشمي"],
-  الاردن: ["اردن", "الاردني", "الاردنية", "المملكة الأردنية"],
-  حكومه: ["حكومة", "الحكومة", "حكومي", "الخدمات الحكومية"],
-  جواز: ["جوازات", "جواز السفر", "الأحوال المدنية"],
-  صحه: ["الصحة", "وزارة الصحة", "صحي"],
-  جامعه: ["جامعة", "جامعات", "التعليم العالي", "وزارة التعليم العالي"],
+  ملك: [
+    "الملك",
+    "ملك الأردن",
+    "عبدالله الثاني",
+    "عبد الله الثاني",
+    "هاشمي",
+  ],
+
+  الاردن: [
+    "الأردن",
+    "اردن",
+    "الاردني",
+    "الاردنية",
+    "المملكة الأردنية",
+  ],
+
+  حكومه: [
+    "حكومة",
+    "الحكومة",
+    "حكومي",
+    "الخدمات الحكومية",
+  ],
+
+  جواز: [
+    "جوازات",
+    "جواز السفر",
+    "الأحوال المدنية",
+  ],
+
+  صحه: [
+    "الصحة",
+    "وزارة الصحة",
+    "صحي",
+  ],
+
+  جامعه: [
+    "جامعة",
+    "جامعات",
+    "التعليم العالي",
+    "وزارة التعليم العالي",
+  ],
 };
 
 function localSearch(query) {
@@ -230,7 +323,9 @@ function localSearch(query) {
 
       let score = 0;
 
-      if (text.includes(q)) score += 100;
+      if (text.includes(q)) {
+        score += 100;
+      }
 
       for (const term of expanded) {
         if (term && text.includes(term)) {
@@ -242,12 +337,19 @@ function localSearch(query) {
         score += 50;
       }
 
-      return { item, score };
+      return {
+        item,
+        score,
+      };
     })
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)
     .map((x) => itemWithMeta(x.item));
 }
+
+/* =========================
+   HTML HELPERS
+========================= */
 
 function htmlDecode(value) {
   return String(value || "")
@@ -268,12 +370,15 @@ function cleanHtml(value) {
   );
 }
 
-/* =========================================================
-   WEB SEARCH
-   SearXNG = بحث حقيقي على الإنترنت
-   ========================================================= */
+/* =========================
+   TIMEOUT FETCH
+========================= */
 
-async function fetchWithTimeout(url, options = {}, timeout = 7000) {
+async function fetchWithTimeout(
+  url,
+  options = {},
+  timeout = 8000
+) {
   const controller = new AbortController();
 
   const timer = setTimeout(() => {
@@ -290,18 +395,30 @@ async function fetchWithTimeout(url, options = {}, timeout = 7000) {
   }
 }
 
-function makeWebItem(title, url, summary, index) {
+/* =========================
+   WEB RESULT BUILDER
+========================= */
+
+function makeWebItem(
+  title,
+  url,
+  summary,
+  index
+) {
   if (!url) return null;
 
   let domain = "web";
 
   try {
-    domain = new URL(url).hostname.replace(/^www\./, "");
+    domain = new URL(url)
+      .hostname
+      .replace(/^www\./, "");
   } catch {
     return null;
   }
 
-  const cleanTitle = cleanHtml(title) || domain;
+  const cleanTitle =
+    cleanHtml(title) || domain;
 
   const source = {
     id: `web-source-${index}-${Date.now()}`,
@@ -326,494 +443,513 @@ function makeWebItem(title, url, summary, index) {
     status: "review",
     lastVerified: null,
     source,
-    tags: ["بحث مباشر", domain],
+    tags: [
+      "بحث مباشر",
+      domain,
+    ],
   };
 }
 
-async function liveSearch(query, limit = 8) {
+/* =========================================================
+   REAL WEB SEARCH
+   SearXNG أولاً
+   DuckDuckGo كاحتياط
+========================================================= */
+
+async function searchSearXNG(
+  query,
+  limit = 8
+) {
   const instances = [
     "https://searx.tiekoetter.com",
     "https://searxng.site",
   ];
 
-  const searchQueries = [
-    `site:gov.jo ${query}`,
-    query,
-  ];
-
   for (const instance of instances) {
-    for (const searchQuery of searchQueries) {
-      try {
-        const params = new URLSearchParams({
-          q: String(searchQuery),
-          language: "ar",
-          categories: "general",
-          pageno: "1",
-          format: "json",
-        });
+    try {
+      const params = new URLSearchParams({
+        q: String(query),
+        language: "ar",
+        categories: "general",
+        pageno: "1",
+        format: "json",
+      });
 
-        const endpoint = `${instance}/search?${params.toString()}`;
-
-        const response = await fetchWithTimeout(
-          endpoint,
+      const response =
+        await fetchWithTimeout(
+          `${instance}/search?${params.toString()}`,
           {
             headers: {
-              "User-Agent": "Mozilla/5.0 JordanAI/1.0",
+              "User-Agent":
+                "Mozilla/5.0 JordanAI/1.0",
               Accept: "application/json",
             },
           },
-          7000
+          8000
         );
 
-        if (!response.ok) {
-          continue;
-        }
-
-        const contentType =
-          response.headers.get("content-type") || "";
-
-        /* -------------------------
-           JSON API
-           ------------------------- */
-
-        if (contentType.includes("application/json")) {
-          const data = await response.json();
-
-          const rawResults = Array.isArray(data.results)
-            ? data.results
-            : [];
-
-          if (rawResults.length) {
-            const mapped = [];
-
-            for (
-              let i = 0;
-              i < rawResults.length && mapped.length < limit;
-              i++
-            ) {
-              const result = rawResults[i];
-
-              const item = makeWebItem(
-                result.title,
-                result.url,
-                result.content || result.description || "",
-                mapped.length
-              );
-
-              if (item) {
-                mapped.push(item);
-              }
-            }
-
-            if (mapped.length) {
-              return mapped.map(itemWithMeta);
-            }
-          }
-        }
-
-        /* -------------------------
-           HTML fallback
-           ------------------------- */
-
-        const htmlParams = new URLSearchParams({
-          q: String(searchQuery),
-          language: "ar",
-          categories: "general",
-        });
-
-        const htmlResponse = await fetchWithTimeout(
-          `${instance}/search?${htmlParams.toString()}`,
-          {
-            headers: {
-              "User-Agent": "Mozilla/5.0 JordanAI/1.0",
-              Accept: "text/html",
-            },
-          },
-          7000
-        );
-
-        if (!htmlResponse.ok) {
-          continue;
-        }
-
-        const html = await htmlResponse.text();
-
-        const mapped = [];
-
-        const resultRegex =
-          /<article[^>]*class="[^"]*result[^"]*"[\s\S]*?<\/article>/gi;
-
-        let match;
-
-        while (
-          (match = resultRegex.exec(html)) &&
-          mapped.length < limit
-        ) {
-          const block = match[0];
-
-          const linkMatch = block.match(
-            /<h3[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i
-          );
-
-          if (!linkMatch) {
-            continue;
-          }
-
-          let resultUrl = htmlDecode(linkMatch[1]);
-
-          try {
-            const parsed = new URL(resultUrl);
-
-            const redirected =
-              parsed.searchParams.get("uddg");
-
-            if (redirected) {
-              resultUrl = decodeURIComponent(redirected);
-            }
-          } catch {}
-
-          const title = cleanHtml(linkMatch[2]);
-
-          const contentMatch = block.match(
-            /class="[^"]*result[_-]content[^"]*"[^>]*>([\s\S]*?)<\/(?:p|div)>/i
-          );
-
-          const summary = contentMatch
-            ? cleanHtml(contentMatch[1])
-            : "نتيجة من البحث المباشر على الإنترنت.";
-
-          const item = makeWebItem(
-            title,
-            resultUrl,
-            summary,
-            mapped.length
-          );
-
-          if (item) {
-            mapped.push(item);
-          }
-        }
-
-        if (mapped.length) {
-          return mapped.map(itemWithMeta);
-        }
-      } catch (error) {
-        console.error(
-          "SearXNG search error:",
-          instance,
-          error?.message || error
-        );
+      if (!response.ok) {
+        continue;
       }
+
+      const contentType =
+        response.headers.get(
+          "content-type"
+        ) || "";
+
+      if (
+        !contentType.includes(
+          "application/json"
+        )
+      ) {
+        continue;
+      }
+
+      const data =
+        await response.json();
+
+      const results =
+        Array.isArray(data.results)
+          ? data.results
+          : [];
+
+      const mapped = [];
+
+      for (
+        let i = 0;
+        i < results.length &&
+        mapped.length < limit;
+        i++
+      ) {
+        const result = results[i];
+
+        const item = makeWebItem(
+          result.title,
+          result.url,
+          result.content ||
+            result.description ||
+            "",
+          mapped.length
+        );
+
+        if (item) {
+          mapped.push(item);
+        }
+      }
+
+      if (mapped.length) {
+        return mapped.map(itemWithMeta);
+      }
+    } catch (error) {
+      console.error(
+        "SearXNG error:",
+        error?.message || error
+      );
     }
   }
 
   return [];
 }
 
-/* =========================================================
+/* =========================
+   DUCKDUCKGO FALLBACK
+========================= */
+
+async function searchDuckDuckGo(
+  query,
+  limit = 8
+) {
+  try {
+    const params = new URLSearchParams({
+      q: String(query),
+      kl: "jo-en",
+    });
+
+    const response =
+      await fetchWithTimeout(
+        `https://html.duckduckgo.com/html/?${params.toString()}`,
+        {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 JordanAI/1.0",
+            Accept: "text/html",
+          },
+        },
+        8000
+      );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const html =
+      await response.text();
+
+    const results = [];
+
+    const regex =
+      /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+
+    let match;
+
+    while (
+      (match = regex.exec(html)) &&
+      results.length < limit
+    ) {
+      let url =
+        htmlDecode(match[1]);
+
+      const title =
+        cleanHtml(match[2]);
+
+      if (!title) continue;
+
+      try {
+        const parsed =
+          new URL(url);
+
+        const redirected =
+          parsed.searchParams.get(
+            "uddg"
+          );
+
+        if (redirected) {
+          url = decodeURIComponent(
+            redirected
+          );
+        }
+      } catch {}
+
+      const item = makeWebItem(
+        title,
+        url,
+        "نتيجة من بحث الويب المباشر.",
+        results.length
+      );
+
+      if (item) {
+        results.push(item);
+      }
+    }
+
+    return results.map(itemWithMeta);
+  } catch (error) {
+    console.error(
+      "DuckDuckGo error:",
+      error?.message || error
+    );
+
+    return [];
+  }
+}
+
+/* =========================
    COMBINED SEARCH
-   المحلي + الإنترنت الحقيقي
-   ========================================================= */
+========================= */
 
-async function combinedSearch(query) {
-  const local = localSearch(query);
+async function liveSearch(
+  query,
+  limit = 8
+) {
+  const webResults =
+    await searchSearXNG(
+      query,
+      limit
+    );
 
-  // دائماً نحاول البحث الحقيقي على الإنترنت
-  const web = await liveSearch(query, 8);
+  if (webResults.length) {
+    return webResults;
+  }
 
-  const seen = new Set();
+  return searchDuckDuckGo(
+    query,
+    limit
+  );
+}
+
+async function combinedSearch(
+  query
+) {
+  const local =
+    localSearch(query);
+
+  const web =
+    await liveSearch(query, 8);
+
   const combined = [];
+  const seen = new Set();
 
-  for (const item of [...web, ...local]) {
-    const url = item?.source?.url || item?.id;
+  for (const item of [
+    ...web,
+    ...local,
+  ]) {
+    const key =
+      item?.source?.url ||
+      item?.id;
 
-    if (!url || seen.has(url)) {
+    if (!key || seen.has(key)) {
       continue;
     }
 
-    seen.add(url);
+    seen.add(key);
     combined.push(item);
   }
 
   return {
     results: combined,
-    searchedLive: web.length > 0,
+    searchedLive:
+      web.length > 0,
   };
 }
 
-function categoriesResponse() {
-  return categories.map((c) => ({
-    ...c,
-    count: Number(c.count),
-    accent: String(c.accent),
-  }));
-}
+/* =========================
+   MAIN HANDLER
+========================= */
 
-function bodyOf(req) {
-  if (req.body && typeof req.body === "object") {
-    return req.body;
-  }
+export default async function handler(
+  req,
+  res
+) {
+  const path =
+    pathOf(req.query?.path);
 
-  if (typeof req.body === "string") {
-    try {
-      return JSON.parse(req.body);
-    } catch {}
-  }
-
-  return {};
-}
-
-/* =========================================================
-   API HANDLER
-   ========================================================= */
-
-export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
-    return send(res, { ok: true });
+    return send(res, {});
   }
 
-  const path = pathOf(req.query?.path);
+  /* =======================
+     HEALTH
+  ======================= */
 
-  if (path === "health") {
+  if (
+    path === "health" ||
+    path === "healthz"
+  ) {
     return send(res, {
       status: "ok",
-      webSearch: "SearXNG",
+      webSearch: "SearXNG + DuckDuckGo",
     });
   }
 
-  if (path === "home" || path === "") {
-    const featured = knowledge.map(itemWithMeta);
+  /* =======================
+     SOURCES
+  ======================= */
 
+  if (path === "sources") {
     return send(res, {
-      verifiedCount: featured.filter(
-        (x) => x.status === "verified"
-      ).length,
-
-      categoryCount: categories.length,
-      sourceCount: sources.length,
-      lastUpdated: now(),
-      categories: categoriesResponse(),
-      featured,
-
-      popularQuestions: [
-        "من هو ملك الأردن؟",
-        "ما هي الخدمات الحكومية في الأردن؟",
-        "وين أجد خدمات الأحوال المدنية والجوازات؟",
-        "وين أجد معلومات وزارة الصحة؟",
-      ],
+      sources: sources.map(
+        sourceWithMeta
+      ),
     });
   }
+
+  /* =======================
+     CATEGORIES
+  ======================= */
 
   if (path === "categories") {
-    return send(res, categoriesResponse());
+    return send(res, {
+      categories,
+    });
   }
+
+  /* =======================
+     KNOWLEDGE
+  ======================= */
 
   if (path === "knowledge") {
-    const category = String(
-      req.query?.category || ""
-    );
-
-    let result = knowledge.map(itemWithMeta);
-
-    if (category) {
-      result = result.filter(
-        (x) => x.category === category
-      );
-    }
-
-    const limit = Math.min(
-      Math.max(Number(req.query?.limit || 12), 1),
-      50
-    );
-
-    return send(res, result.slice(0, limit));
+    return send(res, {
+      items: knowledge.map(
+        itemWithMeta
+      ),
+    });
   }
 
-  if (path.startsWith("knowledge/")) {
-    const id = decodeURIComponent(
-      path.slice("knowledge/".length)
-    );
+  /* =======================
+     SEARCH
+  ======================= */
 
-    const item = knowledge.find(
-      (x) => x.id === id
-    );
+  if (path === "search") {
+    const body =
+      bodyOf(req);
 
-    if (!item) {
+    const query =
+      String(
+        body.query ||
+        req.query?.q ||
+        ""
+      ).trim();
+
+    if (!query) {
       return send(
         res,
         {
-          error: "Knowledge item not found",
-          id,
+          results: [],
+          searchedLive: false,
         },
-        404
+        400
       );
     }
 
-    return send(res, itemWithMeta(item));
-  }
-
-  /* =======================================================
-     SEARCH
-     ======================================================= */
-
-  if (path === "search") {
-    const query = String(
-      req.query?.q ||
-        req.query?.query ||
-        ""
-    ).trim();
-
-    const limit = Math.min(
-      Math.max(Number(req.query?.limit || 8), 1),
-      20
-    );
-
-    if (!query) {
-      return send(res, {
-        query: "",
-        searchedLive: false,
-        message: "اكتب كلمة أو سؤال للبحث.",
-        results: [],
-      });
-    }
-
-    const found = await combinedSearch(query);
-
-    const results = found.results.slice(0, limit);
+    const result =
+      await combinedSearch(
+        query
+      );
 
     return send(res, {
       query,
-      searchedLive: found.searchedLive,
-
-      message: results.length
-        ? found.searchedLive
-          ? "تم البحث في الإنترنت مباشرة مع دعم المعرفة المحلية."
-          : "تم العثور على نتائج من المعرفة المتاحة."
-        : "ما لقيت نتيجة مناسبة. جرّب صياغة السؤال بطريقة ثانية.",
-
-      results,
+      results: result.results,
+      searchedLive:
+        result.searchedLive,
     });
   }
 
-  /* =======================================================
-     AI ASSISTANT
-     ======================================================= */
+  /* =======================
+     ASSISTANT
+  ======================= */
 
-  if (path === "assistant/answer") {
-    const body = bodyOf(req);
+  if (
+    path === "assistant/answer"
+  ) {
+    const body =
+      bodyOf(req);
 
-    const question = String(
-      body.question ||
+    const question =
+      String(
+        body.question ||
+        body.query ||
         req.query?.q ||
         ""
-    ).trim();
+      ).trim();
 
     if (!question) {
-      return send(res, {
-        question: "",
-        answer: "اكتب سؤالك وأنا ببحثلك عنه.",
-        status: "not-verified",
-        searchedLive: false,
-        sources: [],
-        note: "اكتب سؤالاً من كلمتين أو أكثر.",
-      });
+      return send(
+        res,
+        {
+          answer:
+            "اكتب سؤالك أولاً.",
+          status:
+            "needs-current-source",
+          searchedLive: false,
+          sources: [],
+        },
+        400
+      );
     }
 
-    const normalized = normalizeArabic(question);
+    const normalized =
+      normalizeArabic(
+        question
+      );
 
-    /* الأسئلة المعروفة محلياً — جواب سريع */
+    /* =====================
+       KNOWN FACT
+    ===================== */
+
     const directKing =
-      normalized.includes("ملك الاردن") ||
-      normalized.includes("من هو ملك الاردن") ||
-      normalized.includes("ملك الاردني") ||
-      normalized.includes("الملك عبدالله الثاني") ||
-      normalized.includes("عبدالله الثاني");
+      normalized.includes(
+        "ملك الاردن"
+      ) ||
+      normalized.includes(
+        "من هو ملك الاردن"
+      ) ||
+      normalized.includes(
+        "ملك الاردني"
+      ) ||
+      normalized.includes(
+        "الملك عبدالله الثاني"
+      );
 
     if (directKing) {
       return send(res, {
         question,
-
         answer:
           "ملك الأردن هو الملك عبدالله الثاني ابن الحسين.",
-
         status: "verified",
-
         searchedLive: false,
-
         sources: [
-          sourceWithMeta(sources[4]),
+          sourceWithMeta(
+            sources[4]
+          ),
         ],
-
         note:
-          "المعلومة مرتبطة بمصدر رسمي، ويمكنك فتح المصدر للتحقق من التفاصيل.",
+          "المعلومة مرتبطة بمصدر رسمي ويمكنك فتح المصدر للتحقق من التفاصيل.",
       });
     }
 
-    /* البحث الحقيقي على الإنترنت */
-    const found = await combinedSearch(question);
+    /* =====================
+       REAL WEB SEARCH
+    ===================== */
 
-    const sourcesUsed = found.results
-      .map((x) => x.source)
-      .filter(Boolean)
-      .slice(0, 8)
-      .map(sourceWithMeta);
+    const result =
+      await combinedSearch(
+        question
+      );
 
-    if (found.results.length) {
-      const first = found.results[0];
+    const results =
+      Array.isArray(
+        result.results
+      )
+        ? result.results
+        : [];
 
+    if (!results.length) {
       return send(res, {
         question,
-
         answer:
-          `${first.title}\n\n${first.summary}`,
-
-        status: found.searchedLive
-          ? "needs-current-source"
-          : "verified",
-
-        searchedLive: found.searchedLive,
-
-        sources: sourcesUsed,
-
-        note: found.searchedLive
-          ? "تم البحث مباشرة على الإنترنت وإرفاق المصادر."
-          : "الإجابة مبنية على المعرفة المحلية في الأردن AI.",
+          "ما قدرت أوصل لنتيجة موثوقة حالياً. جرّب صياغة السؤال بطريقة ثانية.",
+        status:
+          "needs-current-source",
+        searchedLive:
+          result.searchedLive,
+        sources: [],
       });
     }
+
+    const first =
+      results[0];
+
+    const answer =
+      `${first.title}\n\n${first.summary}`;
+
+    const answerSources =
+      results
+        .slice(0, 5)
+        .map((item) =>
+          sourceWithMeta(
+            item.source
+          )
+        )
+        .filter(Boolean);
 
     return send(res, {
       question,
-
-      answer:
-        "ما قدرت ألاقي معلومة مناسبة حالياً. جرّب صياغة السؤال بطريقة ثانية.",
-
-      status: "not-verified",
-
-      searchedLive: false,
-
-      sources: [],
-
+      answer,
+      status:
+        result.searchedLive
+          ? "needs-current-source"
+          : "verified",
+      searchedLive:
+        result.searchedLive,
+      sources:
+        answerSources,
+      results:
+        results.slice(0, 8),
       note:
-        "جرّب إضافة اسم الجهة أو الخدمة أو المدينة إلى السؤال.",
+        result.searchedLive
+          ? "تم البحث مباشرة على الويب وإرجاع المصادر."
+          : "تمت الاستعانة بالمعرفة المحلية.",
     });
   }
 
-  /* =======================================================
-     FEEDBACK
-     ======================================================= */
-
-  if (path === "feedback") {
-    return send(res, {
-      id: `feedback-${Date.now()}`,
-      received: true,
-      message: "تم استلام الملاحظة، شكرًا لك.",
-    });
-  }
+  /* =======================
+     UNKNOWN ROUTE
+  ======================= */
 
   return send(
     res,
     {
-      error: "API route not found",
+      error: "Not found",
       path,
     },
     404
