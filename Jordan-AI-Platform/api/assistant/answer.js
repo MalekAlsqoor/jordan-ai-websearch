@@ -25,6 +25,7 @@ const BAD_SITES = [
 ];
 
 const TRUSTED_SITES = [
+  "rhc.jo",
   "pm.gov.jo",
   "petra.gov.jo",
   "moi.gov.jo",
@@ -39,10 +40,10 @@ const TRUSTED_SITES = [
 
 const STOP_WORDS = new Set([
   "مين", "من", "ما", "ماذا", "شو", "ايش", "اي", "أي",
-  "هل", "هو", "هي", "هم", "هن", "كم", "متى", "اين", "وين",
-  "كيف", "ليش", "لماذا", "عن", "في", "على", "الى", "إلى",
-  "هذا", "هذه", "ذلك", "تلك", "كان", "كانت", "يكون",
-  "تكون", "مع", "او", "أو", "و"
+  "هل", "هو", "هي", "هم", "هن", "كم", "متى", "اين",
+  "وين", "كيف", "ليش", "لماذا", "عن", "في", "على",
+  "الى", "إلى", "هذا", "هذه", "ذلك", "تلك", "كان",
+  "كانت", "يكون", "تكون", "مع", "او", "أو", "و"
 ]);
 
 function cleanText(text) {
@@ -107,64 +108,181 @@ function isTrustedDomain(domain) {
   );
 }
 
-function isJordanQuestion(question) {
-  const q = normalizeArabic(question);
-
-  return [
-    "الاردن",
-    "اردن",
-    "اردني",
-    "اردنيه",
-    "الحكومه الاردنيه",
-    "الحكومة الاردنية",
-    "رئيس الوزراء",
-    "رئيس وزراء",
-    "رئيس الحكومه",
-    "رئيس الحكومة",
-    "jordan",
-    "amman",
-    "عمان"
-  ].some((word) =>
+function hasAny(q, words) {
+  return words.some((word) =>
     q.includes(normalizeArabic(word))
   );
 }
 
-function isPrimeMinisterQuestion(question) {
+/*
+ * أهم تغيير:
+ * نفهم السؤال أولاً ونحدد موضوعه.
+ */
+function understandQuestion(question) {
   const q = normalizeArabic(question);
 
-  return (
-    q.includes("رئيس الوزراء") ||
-    q.includes("رئيس وزراء") ||
-    q.includes("رئيس الحكومه") ||
-    q.includes("رئيس الحكومة")
-  );
+  const royalFamily = hasAny(q, [
+    "اخوان الملك",
+    "إخوان الملك",
+    "اخوة الملك",
+    "إخوة الملك",
+    "عائلة الملك",
+    "اسرة الملك",
+    "الاسرة الهاشمية",
+    "الأسرة الهاشمية",
+    "الهاشميين",
+    "ابناء الملك",
+    "ابن الملك",
+    "ابنة الملك",
+    "زوجة الملك",
+    "الملكة رانيا",
+    "الامراء الاردنيين",
+    "الأمراء الأردنيين",
+    "امراء الاردن",
+    "أمراء الأردن",
+    "الامير الحسين",
+    "ولي العهد",
+    "الامير حمزة",
+    "الامير علي",
+    "الامير فيصل",
+    "الامير هاشم",
+    "الاميرة ايمان",
+    "الاميرة سلمى"
+  ]);
+
+  const king = hasAny(q, [
+    "ملك الاردن",
+    "ملك الأردن",
+    "عبدالله الثاني",
+    "عبد الله الثاني",
+    "الملك عبدالله",
+    "الملك عبد الله",
+    "الملك حسين",
+    "الحسين بن طلال"
+  ]);
+
+  const government = hasAny(q, [
+    "رئيس الوزراء",
+    "رئيس وزراء",
+    "رئيس الحكومه",
+    "رئيس الحكومة",
+    "الحكومه الاردنيه",
+    "الحكومة الأردنية",
+    "مجلس الوزراء",
+    "وزير",
+    "وزراء",
+    "وزارة",
+    "وزاره"
+  ]);
+
+  const jordan = hasAny(q, [
+    "الاردن",
+    "اردن",
+    "اردني",
+    "اردنيه",
+    "jordan",
+    "amman",
+    "عمان",
+    "العقبه",
+    "العقبة",
+    "اربد",
+    "الزرقاء"
+  ]);
+
+  if (royalFamily || king) {
+    return {
+      topic: "royal_family",
+      label: "الملك والأسرة الهاشمية",
+      words: tokenize(question)
+    };
+  }
+
+  if (government) {
+    return {
+      topic: "government",
+      label: "الحكومة الأردنية",
+      words: tokenize(question)
+    };
+  }
+
+  if (jordan) {
+    return {
+      topic: "jordan",
+      label: "الأردن",
+      words: tokenize(question)
+    };
+  }
+
+  return {
+    topic: "general",
+    label: "عام",
+    words: tokenize(question)
+  };
 }
 
-function buildQueries(question) {
-  const queries = [question];
+/*
+ * نبني البحث حسب الموضوع،
+ * وليس حسب السؤال الخام فقط.
+ */
+function buildQueries(question, intent) {
+  const q = normalizeArabic(question);
+  const queries = [];
 
-  if (isPrimeMinisterQuestion(question)) {
+  if (intent.topic === "royal_family") {
     queries.push(
-      "رئيس وزراء الأردن",
-      "رئيس الوزراء الأردني",
-      "رئيس الحكومة الأردنية",
-      "رئيس الوزراء الأردن الحالي",
-      "رئيس الوزراء الأردن 2026",
-      "جعفر حسان رئيس الوزراء"
+      `site:rhc.jo ${question}`,
+      `site:rhc.jo "الملك عبدالله الثاني" "الأسرة الهاشمية"`,
+      `site:rhc.jo "الملك عبدالله الثاني" "إخوان"`,
+      `site:rhc.jo "الملك عبدالله الثاني" "الأمراء"`,
+      `"عبدالله الثاني" "إخوانه" الأردن`,
+      `"عبدالله الثاني" "إخوته" الأردن`,
+      `"الأسرة الهاشمية" الأردن ${q}`
     );
-  } else if (isJordanQuestion(question)) {
+  }
+
+  else if (intent.topic === "government") {
+    queries.push(
+      `site:pm.gov.jo ${question}`,
+      `site:petra.gov.jo ${question}`,
+      `${question} الأردن الحكومة`,
+      `${question} الأردن 2026`
+    );
+
+    if (
+      q.includes("رئيس الوزراء") ||
+      q.includes("رئيس وزراء") ||
+      q.includes("رئيس الحكومه") ||
+      q.includes("رئيس الحكومة")
+    ) {
+      queries.push(
+        `site:pm.gov.jo "رئيس الوزراء" الأردن`,
+        `site:pm.gov.jo "جعفر حسان"`
+      );
+    }
+  }
+
+  else if (intent.topic === "jordan") {
     queries.push(
       `${question} الأردن`,
       `${question} الأردن 2026`,
-      `${question} الحكومة الأردنية`,
+      `site:gov.jo ${question}`,
+      `site:petra.gov.jo ${question}`,
       `${question} Jordan`
     );
   }
 
-  return [...new Set(queries)].slice(0, 8);
+  else {
+    queries.push(question);
+  }
+
+  return [
+    ...new Set(queries)
+  ]
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
-function scoreResult(item, question) {
+function scoreResult(item, intent) {
   const title = normalizeArabic(item.title);
   const snippet = normalizeArabic(item.snippet);
   const text = `${title} ${snippet}`;
@@ -172,77 +290,78 @@ function scoreResult(item, question) {
 
   let score = 0;
 
-  const words = tokenize(question);
-
-  for (const word of words) {
-    if (title.includes(word)) {
-      score += 20;
-    }
-
-    if (snippet.includes(word)) {
-      score += 7;
-    }
+  for (const word of intent.words) {
+    if (title.includes(word)) score += 25;
+    if (snippet.includes(word)) score += 8;
   }
 
   if (isBadDomain(domain)) {
-    score -= 500;
+    score -= 1000;
   }
 
-  if (isJordanQuestion(question)) {
-    if (text.includes("الاردن")) {
-      score += 20;
-    }
+  if (intent.topic === "royal_family") {
+    if (domain === "rhc.jo") score += 500;
+    if (domain.endsWith("gov.jo")) score += 180;
 
-    if (text.includes("الاردني")) {
-      score += 15;
-    }
-
-    if (domain.endsWith("gov.jo")) {
+    if (
+      text.includes("الملك عبدالله") ||
+      text.includes("الملك عبد الله")
+    ) {
       score += 100;
     }
 
-    if (isTrustedDomain(domain)) {
-      score += 40;
-    }
-  }
-
-  if (isPrimeMinisterQuestion(question)) {
     if (
-      title.includes("رئيس الوزراء") ||
-      title.includes("رئيس وزراء")
+      text.includes("الاسرة الهاشمية") ||
+      text.includes("الأسرة الهاشمية")
     ) {
-      score += 80;
+      score += 90;
+    }
+
+    if (text.includes("الهاشمي")) score += 50;
+
+    if (
+      text.includes("اخوان") ||
+      text.includes("اخوة")
+    ) {
+      score += 120;
     }
 
     if (
-      snippet.includes("رئيس الوزراء") ||
-      snippet.includes("رئيس وزراء")
+      text.includes("ابناء") ||
+      text.includes("ابن")
     ) {
       score += 50;
     }
+  }
 
-    if (domain === "pm.gov.jo") {
-      score += 300;
+  if (intent.topic === "government") {
+    if (domain === "pm.gov.jo") score += 500;
+    if (domain === "petra.gov.jo") score += 220;
+    if (domain.endsWith("gov.jo")) score += 150;
+
+    if (text.includes("رئيس الوزراء")) {
+      score += 120;
     }
 
-    if (domain === "petra.gov.jo") {
-      score += 180;
-    }
-
-    if (domain === "almamlaka.tv") {
-      score += 80;
-    }
-
-    if (domain === "royanews.tv") {
+    if (text.includes("الحكومة")) {
       score += 70;
     }
+  }
+
+  if (intent.topic === "jordan") {
+    if (domain.endsWith("gov.jo")) score += 180;
+    if (domain === "petra.gov.jo") score += 200;
+    if (isTrustedDomain(domain)) score += 60;
+
+    if (text.includes("الاردن")) score += 40;
+    if (text.includes("الاردني")) score += 30;
   }
 
   if (
     domain === "wikipedia.org" ||
     domain.endsWith(".wikipedia.org")
   ) {
-    score -= 100;
+    score -= 120;
   }
 
   return score;
@@ -258,9 +377,7 @@ async function fetchJson(url) {
       signal: AbortSignal.timeout(7000)
     });
 
-    if (!response.ok) {
-      return null;
-    }
+    if (!response.ok) return null;
 
     return await response.json();
   } catch {
@@ -303,106 +420,122 @@ async function searchSearX(instance, query) {
   return [];
 }
 
-async function searchWeb(question) {
-  const queries = buildQueries(question);
+async function searchWeb(question, intent) {
   const allResults = [];
 
-  for (const query of queries) {
-    const results = await Promise.all(
+  for (const query of buildQueries(question, intent)) {
+    const batches = await Promise.all(
       SEARX_INSTANCES.map((instance) =>
         searchSearX(instance, query)
       )
     );
 
-    for (const batch of results) {
+    for (const batch of batches) {
       allResults.push(...batch);
     }
 
-    if (allResults.length >= 100) {
+    if (allResults.length >= 120) {
       break;
     }
   }
 
   const seen = new Set();
 
-  const unique = allResults.filter((item) => {
-    const key = String(item.url || "")
-      .toLowerCase()
-      .replace(/\/$/, "");
+  return allResults
+    .filter((item) => {
+      const key = String(item.url || "")
+        .toLowerCase()
+        .replace(/\/$/, "");
 
-    if (!key || seen.has(key)) {
-      return false;
-    }
+      if (!key || seen.has(key)) {
+        return false;
+      }
 
-    seen.add(key);
-    return true;
-  });
-
-  return unique
+      seen.add(key);
+      return true;
+    })
     .map((item) => ({
       ...item,
-      score: scoreResult(item, question)
+      score: scoreResult(item, intent)
     }))
     .filter(
       (item) =>
         !isBadDomain(domainOf(item.url))
     )
-    .sort(
-      (a, b) => b.score - a.score
-    )
+    .sort((a, b) => b.score - a.score)
     .slice(0, 15);
 }
 
-async function getOfficialJordanSources(question) {
-  if (!isPrimeMinisterQuestion(question)) {
-    return [];
+async function fetchOfficialPage(url, title) {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: "text/html",
+        "User-Agent": "Jordan-AI/1.0"
+      },
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (!response.ok) return null;
+
+    const text = cleanText(
+      await response.text()
+    );
+
+    if (!text) return null;
+
+    return {
+      title,
+      url,
+      snippet: text.slice(0, 9000),
+      engine: "Official Jordan source"
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getOfficialSources(intent) {
+  const urls = [];
+
+  if (intent.topic === "royal_family") {
+    urls.push(
+      [
+        "https://rhc.jo/ar",
+        "الديوان الملكي الهاشمي"
+      ],
+      [
+        "https://rhc.jo/ar/king-abdullah",
+        "سيرة جلالة الملك عبدالله الثاني"
+      ],
+      [
+        "https://rhc.jo/ar/crown-prince-biography",
+        "السيرة الذاتية لولي العهد"
+      ]
+    );
   }
 
-  const urls = [
-    "https://pm.gov.jo/AR/CustomPages/Government",
-    "https://pm.gov.jo/AR/CustomPages/SearchHeadMinister",
-    "https://pm.gov.jo/AR/Pages/%D8%A3%D8%B9%D8%B6%D8%A7%D8%A1_%D9%85%D8%AC%D9%84%D8%B3_%D8%A7%D9%84%D9%88%D8%B2%D8%B1%D8%A7%D8%A1"
-  ];
+  if (intent.topic === "government") {
+    urls.push(
+      [
+        "https://pm.gov.jo/AR/CustomPages/Government",
+        "رئاسة الوزراء - الحكومة الحالية"
+      ],
+      [
+        "https://pm.gov.jo/AR/CustomPages/SearchHeadMinister",
+        "رئاسة الوزراء - بيانات رؤساء الوزراء"
+      ],
+      [
+        "https://pm.gov.jo/AR/Pages/%D8%A3%D8%B9%D8%B6%D8%A7%D8%A1_%D9%85%D8%AC%D9%84%D8%B3_%D8%A7%D9%84%D9%88%D8%B2%D8%B1%D8%A7%D8%A1",
+        "أعضاء مجلس الوزراء"
+      ]
+    );
+  }
 
   const results = await Promise.all(
-    urls.map(async (url) => {
-      try {
-        const response = await fetch(url, {
-          headers: {
-            Accept: "text/html",
-            "User-Agent": "Jordan-AI/1.0"
-          },
-          signal: AbortSignal.timeout(10000)
-        });
-
-        if (!response.ok) {
-          return null;
-        }
-
-        const html = await response.text();
-        const text = cleanText(html);
-
-        if (
-          !text ||
-          !(
-            text.includes("جعفر") ||
-            text.includes("رئيس الوزراء")
-          )
-        ) {
-          return null;
-        }
-
-        return {
-          title:
-            "رئاسة الوزراء الأردنية - الحكومة الحالية",
-          url,
-          snippet: text.slice(0, 6000),
-          engine: "Jordan Government"
-        };
-      } catch {
-        return null;
-      }
-    })
+    urls.map(([url, title]) =>
+      fetchOfficialPage(url, title)
+    )
   );
 
   return results.filter(Boolean);
@@ -414,50 +547,68 @@ function makeSources(results) {
 
   return results
     .slice(0, 8)
-    .map((item, index) => ({
-      id: `source-${index + 1}`,
-      title:
-        item.title ||
-        "مصدر ويب",
-      publisher:
-        domainOf(item.url),
-      domain:
-        domainOf(item.url),
-      url: item.url,
-      type:
-        domainOf(item.url).endsWith("gov.jo")
-          ? "official"
-          : isTrustedDomain(
-              domainOf(item.url)
-            )
-          ? "reliable"
-          : "secondary",
-      retrievedAt,
-      publicationDate: null
-    }));
+    .map((item, index) => {
+      const domain = domainOf(item.url);
+
+      return {
+        id: `source-${index + 1}`,
+        title: item.title || "مصدر ويب",
+        publisher: domain,
+        domain,
+        url: item.url,
+
+        type:
+          domain.endsWith("gov.jo") ||
+          domain === "rhc.jo"
+            ? "official"
+            : isTrustedDomain(domain)
+            ? "reliable"
+            : "secondary",
+
+        retrievedAt,
+        publicationDate: null
+      };
+    });
 }
 
-function directAnswer(question, results) {
-  if (!isPrimeMinisterQuestion(question)) {
-    return "";
+function directAnswer(
+  question,
+  results,
+  intent
+) {
+  const q = normalizeArabic(question);
+
+  /*
+   * إجابة مؤكدة لرئيس الوزراء
+   * من المصدر الرسمي.
+   */
+  if (
+    intent.topic === "government" &&
+    (
+      q.includes("رئيس الوزراء") ||
+      q.includes("رئيس وزراء") ||
+      q.includes("رئيس الحكومه") ||
+      q.includes("رئيس الحكومة")
+    )
+  ) {
+    const official = results.some(
+      (item) =>
+        domainOf(item.url) === "pm.gov.jo"
+    );
+
+    if (official) {
+      return "رئيس وزراء الأردن حاليًا هو الدكتور جعفر عبد عبدالفتاح حسان، وهو أيضًا وزير الدفاع.";
+    }
   }
 
-  const official = results.find(
-    (item) =>
-      domainOf(item.url) === "pm.gov.jo"
-  );
-
-  if (!official) {
-    return "";
-  }
-
-  return (
-    "رئيس وزراء الأردن حاليًا هو الدكتور جعفر عبد عبدالفتاح حسان، " +
-    "وهو أيضًا وزير الدفاع."
-  );
+  return "";
 }
 
-async function askAI(question, results) {
+async function askAI(
+  question,
+  results,
+  intent
+) {
   const token = process.env.HF_TOKEN;
 
   if (!token) {
@@ -482,10 +633,12 @@ async function askAI(question, results) {
     "https://router.huggingface.co/v1/chat/completions",
     {
       method: "POST",
+
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json"
       },
+
       body: JSON.stringify({
         model:
           "openai/gpt-oss-20b:cheapest",
@@ -493,27 +646,27 @@ async function askAI(question, results) {
         messages: [
           {
             role: "system",
-            content: `
-أنت Jordan AI.
 
-مهمتك الإجابة عن سؤال المستخدم
-اعتمادًا على المصادر التي أرسلها لك فقط.
+            content:
+              `أنت Jordan AI.
 
-القواعد:
-1. أعطِ الإجابة المباشرة أولًا.
-2. لا تخترع معلومات.
-3. لا تعتمد على مصدر إذا كان غير متعلق بالسؤال.
-4. أعطِ الأولوية للمصادر الحكومية والرسمية.
-5. إذا وجدت مصدرًا رسميًا أردنيًا، استخدمه قبل المصادر الأخرى.
-6. إذا كانت المعلومات غير كافية، قل ذلك بوضوح.
-7. أجب بالعربية.
-8. لا تذكر أسماء المصادر داخل الإجابة إلا إذا كان ذلك مفيدًا.
-9. لا تقل "SOURCE 1".
-10. لا تكرر السؤال.
-`
+تم تصنيف السؤال مسبقًا على أنه:
+${intent.label}
+
+أجب اعتمادًا على المصادر المرفقة فقط.
+
+قواعد مهمة:
+- تجاهل أي مصدر غير متعلق بالسؤال.
+- أعطِ الإجابة المباشرة أولًا.
+- أجب بالعربية.
+- كن مختصرًا وواضحًا.
+- لا تخترع أسماء أو أرقام أو أحداث.
+- إذا لم تكفِ المصادر، قل بوضوح إن المصادر الحالية لا تكفي.`
           },
+
           {
             role: "user",
+
             content:
               `السؤال:
 ${question}
@@ -525,21 +678,13 @@ ${sourceText}`
 
         temperature: 0.1,
         max_tokens: 500
-      }),
-
-      signal: AbortSignal.timeout(25000)
+      })
     }
   );
 
   if (!response.ok) {
-    const errorText =
-      await response.text();
-
     throw new Error(
-      `HF ${response.status}: ${errorText.slice(
-        0,
-        700
-      )}`
+      `HF HTTP ${response.status}`
     );
   }
 
@@ -547,93 +692,74 @@ ${sourceText}`
     await response.json();
 
   const answer =
-    data?.choices?.[0]?.message?.content;
+    data?.choices?.[0]?.message?.content?.trim();
 
-  if (
-    !answer ||
-    typeof answer !== "string"
-  ) {
+  if (!answer) {
     throw new Error(
-      "Hugging Face لم يرجع إجابة"
+      "HF returned empty answer"
     );
   }
 
-  return answer.trim();
+  return answer;
 }
 
-export default async function handler(
+module.exports = async function handler(
   req,
   res
 ) {
-  res.setHeader(
-    "Cache-Control",
-    "no-store"
-  );
-
-  res.setHeader(
-    "Access-Control-Allow-Origin",
-    "*"
-  );
-
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type"
-  );
-
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "POST, OPTIONS"
-  );
-
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
-  }
-
   if (req.method !== "POST") {
     return res
       .status(405)
       .json({
-        error: "Method Not Allowed"
+        message: "Method Not Allowed"
       });
   }
 
   try {
-    const question =
-      String(
-        req.body?.question || ""
-      ).trim();
+    const question = String(
+      req.body?.question || ""
+    ).trim();
 
-    if (question.length < 2) {
+    if (!question) {
       return res
         .status(400)
         .json({
-          error:
-            "السؤال قصير جدًا"
+          question: "",
+          answer: "اكتب سؤالك أولًا.",
+          status: "not-verified",
+          searchedLive: false,
+          sources: [],
+          note: "لم يتم إدخال سؤال."
         });
     }
 
-    if (question.length > 1000) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "السؤال طويل جدًا"
-        });
-    }
+    /*
+     * 1️⃣ فهم السؤال
+     */
+    const intent =
+      understandQuestion(question);
 
-    // أولًا: المصدر الحكومي المباشر
-    const official =
-      await getOfficialJordanSources(
-        question
+    /*
+     * 2️⃣ جلب المصادر الرسمية
+     */
+    const officialResults =
+      await getOfficialSources(intent);
+
+    /*
+     * 3️⃣ البحث حسب الموضوع
+     */
+    const webResults =
+      await searchWeb(
+        question,
+        intent
       );
 
-    // ثانيًا: بحث الويب
-    const webResults =
-      await searchWeb(question);
-
-    // دمج النتائج
+    /*
+     * 4️⃣ دمج المصادر
+     * الرسمية لها أولوية.
+     */
     const combined = [
-      ...official,
+      ...officialResults,
       ...webResults
     ];
 
@@ -641,11 +767,11 @@ export default async function handler(
 
     const results = combined
       .filter((item) => {
-        const key = String(item.url)
+        const key = String(item.url || "")
           .toLowerCase()
           .replace(/\/$/, "");
 
-        if (seen.has(key)) {
+        if (!key || seen.has(key)) {
           return false;
         }
 
@@ -654,100 +780,145 @@ export default async function handler(
       })
       .map((item) => ({
         ...item,
-        score: scoreResult(
-          item,
-          question
-        )
+
+        score:
+          scoreResult(item, intent) +
+          (
+            officialResults.includes(item)
+              ? 1000
+              : 0
+          )
       }))
       .sort(
-        (a, b) => b.score - a.score
+        (a, b) =>
+          b.score - a.score
       )
-      .slice(0, 12);
+      .slice(0, 15);
 
-    // إذا السؤال عن رئيس الوزراء
-    // والمصدر الرسمي موجود، نضمن الإجابة الصحيحة
+    const sources =
+      makeSources(results);
+
+    /*
+     * 5️⃣ إجابات مؤكدة لبعض الأسئلة
+     */
     const direct =
       directAnswer(
         question,
-        results
+        results,
+        intent
       );
 
     if (direct) {
-      return res.status(200).json({
-        question,
-        answer: direct,
-        status: "verified",
-        searchedLive: true,
-        sources:
-          makeSources(results),
-        note:
-          "تم التحقق من المصدر الرسمي لرئاسة الوزراء الأردنية."
-      });
+      return res
+        .status(200)
+        .json({
+          question,
+          answer: direct,
+          status: "verified",
+          searchedLive: true,
+          sources,
+
+          note:
+            `تم فهم السؤال كموضوع: ${intent.label}، ثم البحث في المصادر المناسبة.`
+        });
     }
 
-    if (!results.length) {
-      return res.status(200).json({
-        question,
-        answer:
-          "لم أجد مصادر ويب مناسبة وموثوقة للإجابة عن هذا السؤال حاليًا.",
-        status:
-          "needs-current-source",
-        searchedLive: true,
-        sources: [],
-        note:
-          "لم يتم العثور على نتائج بحث مناسبة."
-      });
+    /*
+     * 6️⃣ إذا النتائج سيئة،
+     * لا نخلي AI يخمّن.
+     */
+    if (
+      !results.length ||
+      results[0].score < 20
+    ) {
+      return res
+        .status(200)
+        .json({
+          question,
+
+          answer:
+            "لم أعثر على مصادر موثوقة ومرتبطة بما يكفي بهذا السؤال حتى الآن، لذلك لن أخمّن الإجابة.",
+
+          status:
+            "needs-current-source",
+
+          searchedLive: true,
+
+          sources: [],
+
+          note:
+            `تم تصنيف السؤال كموضوع: ${intent.label}، لكن نتائج البحث لم تكن مرتبطة بما يكفي.`
+        });
     }
 
-    let answer = "";
+    /*
+     * 7️⃣ إرسال المصادر إلى AI
+     */
+    let answer;
 
     try {
       answer =
         await askAI(
           question,
-          results
+          results,
+          intent
         );
     } catch (error) {
       console.error(
-        "HF ERROR:",
+        "AI error:",
         error
       );
+
+      answer =
+        "تم العثور على مصادر مرتبطة بالسؤال، لكن تعذر تشغيل طبقة الذكاء الاصطناعي حاليًا. حاول مرة أخرى.";
     }
 
-    if (!answer) {
-      return res.status(200).json({
+    return res
+      .status(200)
+      .json({
         question,
-        answer:
-          "تم العثور على مصادر، لكن تعذر تشغيل طبقة الذكاء الاصطناعي حاليًا. حاول مرة أخرى.",
-        status:
-          "needs-current-source",
-        searchedLive: true,
-        sources:
-          makeSources(results),
-        note:
-          "طبقة الذكاء الاصطناعي غير متاحة حاليًا."
-      });
-    }
+        answer,
 
-    return res.status(200).json({
-      question,
-      answer,
-      status: "verified",
-      searchedLive: true,
-      sources:
-        makeSources(results),
-      note:
-        "تم البحث مباشرة في الويب وتحليل أفضل المصادر."
-    });
+        status:
+          answer.startsWith(
+            "تم العثور على مصادر"
+          )
+            ? "needs-current-source"
+            : "verified",
+
+        searchedLive: true,
+
+        sources,
+
+        note:
+          `تم فهم السؤال كموضوع: ${intent.label}، ثم البحث حسب الموضوع وترتيب المصادر قبل إرسالها إلى AI.`
+      });
+
   } catch (error) {
     console.error(
-      "ASSISTANT ERROR:",
+      "Jordan AI error:",
       error
     );
 
-    return res.status(500).json({
-      error:
-        "حدث خطأ داخلي أثناء البحث والإجابة."
-    });
+    return res
+      .status(500)
+      .json({
+        question: String(
+          req.body?.question || ""
+        ),
+
+        answer:
+          "صار خطأ مؤقت أثناء البحث. جرّب السؤال مرة ثانية.",
+
+        status:
+          "not-verified",
+
+        searchedLive: false,
+
+        sources: [],
+
+        note:
+          "حدث خطأ غير متوقع في الخادم."
+      });
   }
-}
+};
